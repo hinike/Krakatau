@@ -108,7 +108,11 @@ def convertJExpr(self, op, info):
         expr = ast.Assignment(getExpr(op.rval), expr)
     
     if expr is None: #Temporary hack to show what's missing
-        return ast.StringStatement('//' + type(op).__name__)
+        name = type(op).__name__
+        if name == 'TryReturn':
+            return ast.StringStatement('')
+        else:
+            return ast.StringStatement('//' + name)
     return ast.ExpressionStatement(expr)
 
 _prefix_map = {objtypes.IntTT:'i', objtypes.LongTT:'j',
