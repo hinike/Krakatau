@@ -12,9 +12,14 @@ def parseFieldDescriptors(desc_str, unsynthesize=True):
             dim += 1
             
         if desc_str[0] == 'L':
-            end = desc_str.index(';')
-            name = desc_str[1:end]
-            desc_str = desc_str[end+1:]
+            try:
+                end = desc_str.index(';')
+            except ValueError:
+                name = desc_str[1:]
+                desc_str = ''
+            else:
+                name = desc_str[1:end]
+                desc_str = desc_str[end+1:]
             baset = [T_OBJECT(name)]
         else:
             baset = baseTypes[desc_str[0]]

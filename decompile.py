@@ -1,3 +1,4 @@
+import traceback
 import os.path
 import time, random
 
@@ -41,7 +42,7 @@ def makeGraph(m):
     s.removeUnusedVariables() #todo - make this a loop
     return s
 
-def decompileClass(path=[], targets=None, outpath=None):
+def decompileClass(path=[], targets=None, outpath=None, args={}):
     if outpath is None:
         outpath = os.getcwd()
 
@@ -50,21 +51,43 @@ def decompileClass(path=[], targets=None, outpath=None):
         e.addToPath(part)
 
     start_time = time.time()
-    # random.shuffle(targets)
+    random.shuffle(targets)
+    random.shuffle(targets)
+    random.shuffle(targets)
+    random.shuffle(targets)
+    random.shuffle(targets)
+    random.shuffle(targets)
     for i,target in enumerate(targets):
-        print 'processing target {}, {} remaining'.format(target, len(targets)-i)
-        c = e.getClass(target)
+        try:
+            if args and args.pattern:
+                if target.find(args.pattern) < 0:
+                    continue
+            print
+            print
+            print 'processing target {}, {} remaining'.format(target, len(targets)-i)
+            c = e.getClass(target)
 
-        deco = javaclass.ClassDecompiler(c, makeGraph)
-        source = deco.generateSource()
+            deco = javaclass.ClassDecompiler(c, makeGraph)
+            source = deco.generateSource()
         #The single class decompiler doesn't add package declaration currently so we add it here
-        if '/' in target:
-            package = 'package {};\n\n'.format(target.replace('/','.').rpartition('.')[0])
-            source = package + source
+            if '/' in target:
+                package = 'package {};\n\n'.format(target.replace('/','.').rpartition('.')[0])
+                source = package + source
 
-        filename = script_util.writeFile(outpath, c.name, '.java', source)
-        print 'Class written to', filename
-        print time.time() - start_time, ' seconds elapsed'
+            filename = script_util.writeFile(outpath, c.name, '.java', source)
+            print 'Class written to', filename
+            print time.time() - start_time, ' seconds elapsed'
+        # except AttributeError as e:
+        #     print e
+        #     print traceback.format_stack()
+        #     time.sleep(5)
+        #     print 'Got attribute error, but continuing!'
+        # except Exception as e:
+        #     print e
+        #     time.sleep(5)
+        #     print 'Failed, but continuing!'
+        except:
+            raise
 
 if __name__== "__main__":
     print 'Krakatau  Copyright (C) 2012-13  Robert Grosse'
@@ -72,7 +95,8 @@ if __name__== "__main__":
     import argparse
     parser = argparse.ArgumentParser(description='Krakatau decompiler and bytecode analysis tool')
     parser.add_argument('-path',action='append',help='Semicolon seperated paths or jars to search when loading classes')
-    parser.add_argument('-out',help='Path to generate source files in')
+    parser.add_argument('-out',      help='Path to generate source files in')
+    parser.add_argument('-pattern',  help='Patterns for selecting packages to decompile')
     parser.add_argument('-nauto', action='store_true', help="Don't attempt to automatically locate the Java standard library. If enabled, you must specify the path explicitly.")
     parser.add_argument('-r', action='store_true', help="Process all files in the directory target and subdirectories")
     parser.add_argument('target',help='Name of class or jar file to decompile')
@@ -99,4 +123,4 @@ if __name__== "__main__":
     targets = script_util.findFiles(args.target, args.r, '.class')
     targets = map(script_util.normalizeClassname, targets)
 
-    decompileClass(path, targets, args.out)
+    decompileClass(path, targets, args.out, args)
