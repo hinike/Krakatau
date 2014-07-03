@@ -814,7 +814,7 @@ class MethodDecompiler(object):
             for block in blocks:
                 for line in block.lines:
                     assert(temp.issuperset(line.params))
-                assert(temp.issuperset(block.jump.params))
+                # assert(temp.issuperset(block.jump.params))
 
             argsources = [self.varinfo[var].expr for var in argvars]
             disp_args = argsources if method.static else argsources[1:] 
