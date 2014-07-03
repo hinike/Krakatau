@@ -511,7 +511,9 @@ class TypeName(JavaExpression):
         self.dtype = None
         self.tt = tt
         name, dim = tt
-        if name[0] == '.': #primative type:
+        if len(name) < 1:
+            '/* <unidentified type> */'
+        elif name[0] == '.': #primative type:
             name = name[1:]
         else:
             name = name.replace('/','.')
