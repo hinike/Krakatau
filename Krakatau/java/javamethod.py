@@ -308,8 +308,12 @@ class MethodDecompiler(object):
             if len(block.jump.params)>1: #even void returns have a monad param
                 returnTypes = parseMethodDescriptor(self.method.descriptor, unsynthesize=False)[1]
                 ret_tt = objtypes.verifierToSynthetic(returnTypes[0])
-                param = self.varinfo[block.jump.params[-1]].expr
-                lines.append(ast.ReturnStatement(param, ret_tt))
+                bjpmo = block.jump.params[-1]
+                if bjpmo in self.varinfo:
+                    param = self.varinfo[bjpmo].expr
+                    lines.append(ast.ReturnStatement(param, ret_tt))
+                else:
+                    lines.append(ast.ReturnStatement(None, ret_tt))
             else:
                 lines.append(ast.ReturnStatement())
         
