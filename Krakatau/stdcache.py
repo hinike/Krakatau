@@ -1,3 +1,5 @@
+from Krakatau.error import ClassLoaderError
+
 class Cache(object):
     def __init__(self, env, filename):
         self.env = env
@@ -28,13 +30,18 @@ class Cache(object):
     def shouldCache(self, name):
         return name.startswith('java/') or name.startswith('javax/')
 
-    def isCached(self, name): return name in self.data
+    def isCached(self, name): return 1 # return name in self.data
 
     def superClasses(self, name):
         if name in self.data:
             return self.data[name][0]
 
-        class_ = self.env.getClass(name)
+        try:
+            class_ = self.env.getClass(name)
+        except ClassLoaderError:
+            self.data[name] = ((u'java/lang/Object',name), set(["SUPER", "PUBLIC"]))
+            return self.data[name][0]
+
         if self.shouldCache(name):
             self._cache_info(class_)
         return class_.getSuperclassHierachy()
@@ -42,8 +49,12 @@ class Cache(object):
     def flags(self, name):
         if name in self.data:
             return self.data[name][1]
+        try:
+            class_ = self.env.getClass(name)
+        except ClassLoaderError:
+            self.data[name] = ((u'java/lang/Object',name), set(["SUPER", "PUBLIC"]))
+            return self.data[name][1]
 
-        class_ = self.env.getClass(name)
         if self.shouldCache(name):
             self._cache_info(class_)
         return class_.flags
