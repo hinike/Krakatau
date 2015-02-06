@@ -42,21 +42,28 @@ def makeGraph(m):
     s.removeUnusedVariables() #todo - make this a loop
     return s
 
+def createEnvironment(path):
+    e = Environment()
+    for part in path:
+        e.addToPath(part)
+    return e
+    
 def decompileClass(path=[], targets=None, outpath=None, args={}):
     if outpath is None:
         outpath = os.getcwd()
 
-    e = Environment()
-    for part in path:
-        e.addToPath(part)
+    e = createEnvironment(path)
 
     start_time = time.time()
-    random.shuffle(targets)
-    random.shuffle(targets)
-    random.shuffle(targets)
-    random.shuffle(targets)
-    random.shuffle(targets)
-    random.shuffle(targets)
+    
+    if args.shuffle:
+        random.shuffle(targets)
+        random.shuffle(targets)
+        random.shuffle(targets)
+        random.shuffle(targets)
+        random.shuffle(targets)
+        random.shuffle(targets)
+    
     for i,target in enumerate(targets):
         try:
             if args and args.pattern:
@@ -86,8 +93,14 @@ def decompileClass(path=[], targets=None, outpath=None, args={}):
         #     print e
         #     time.sleep(5)
         #     print 'Failed, but continuing!'
-        except:
-            raise
+        except Exception as theException:
+            print theException
+            if args.keepgoing:
+                time.sleep(5)
+                print 'Failed, but continuing!'
+                e = createEnvironment(path)
+            else:
+               raise
 
 if __name__== "__main__":
     print 'Krakatau  Copyright (C) 2012-13  Robert Grosse'
@@ -99,6 +112,8 @@ if __name__== "__main__":
     parser.add_argument('-pattern',  help='Patterns for selecting packages to decompile')
     parser.add_argument('-nauto', action='store_true', help="Don't attempt to automatically locate the Java standard library. If enabled, you must specify the path explicitly.")
     parser.add_argument('-r', action='store_true', help="Process all files in the directory target and subdirectories")
+    parser.add_argument('-keepgoing', action='store_true', help="Keep going after the first error")
+    parser.add_argument('-shuffle', action='store_true', help="Shuffle the order in which classes are decompiled")
     parser.add_argument('target',help='Name of class or jar file to decompile')
     args = parser.parse_args()
 
