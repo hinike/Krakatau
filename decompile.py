@@ -63,7 +63,9 @@ def decompileClass(path=[], targets=None, outpath=None, args={}):
         random.shuffle(targets)
         random.shuffle(targets)
         random.shuffle(targets)
-    
+
+    failedTargets = [ ]
+        
     for i,target in enumerate(targets):
         try:
             if args and args.pattern:
@@ -97,10 +99,16 @@ def decompileClass(path=[], targets=None, outpath=None, args={}):
             print theException
             if args.keepgoing:
                 time.sleep(5)
-                print 'Failed, but continuing!'
+                print '{}: Failed, but continuing to decompile other classes!'.format(target)
+                failedTargets.append(target)
                 e = createEnvironment(path)
             else:
-               raise
+                raise
+
+    if (len(failedTargets) > 0):
+        print 'Failed to decompile the following classes:'
+        for target in failedTargets:
+            print target
 
 if __name__== "__main__":
     print 'Krakatau  Copyright (C) 2012-13  Robert Grosse'
