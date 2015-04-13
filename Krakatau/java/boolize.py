@@ -1,186 +1,176 @@
 import collections
 
-from ..ssa.objtypes import IntTT, ShortTT, CharTT, ByteTT, BoolTT
+from .. import graph_util
+from ..ssa import objtypes
+from ..ssa.objtypes import IntTT, ShortTT, CharTT, ByteTT, BoolTT, BExpr
 from . import ast
 
-class _GraphNode(object):
-    def __init__(self, key):
-        self.keys = frozenset([key])
-        self.weights = collections.defaultdict(int)
+#Class union-find data structure except that we don't bother with weighting trees and singletons are implicit
+#Also, booleans are forced to be seperate roots
+FORCED_ROOTS = True, False
+class UnionFind(object):
+    def __init__(self):
+        self.d = {}
 
-def graphCutVars(root, arg_vars, visit_cb):
-    # Any var which isn't known to be 0 or 1 is wide and must have a forced value
-    # Forced int if any defs are methods, fields, arrays, or literals > 1 or any
-    # defs are forced int. Forced bool otherwise
+    def find(self, x):
+        if x not in self.d:
+            return x
+        path = [x]
+        while path[-1] in self.d:
+            path.append(self.d[path[-1]])
+        root = path.pop()
+        for y in path:
+            self.d[y] = root
+        return root
 
-    # Compute graph for 01 vars
-    # choose a cut
-    # assign every chosen var to bool dtype
-    # add expr param casts
-    edges = []
-    nodes = collections.OrderedDict()
-    def get(key):
-        if key not in nodes:
-            nodes[key] = _GraphNode(key)
-        return nodes[key]
+    def union(self, x, x2):
+        if x is None or x2 is None:
+            return
+        root1, root2 = self.find(x), self.find(x2)
+        if root2 in FORCED_ROOTS:
+            root1, root2 = root2, root1
+        if root1 != root2 and root2 not in FORCED_ROOTS:
+            self.d[root2] = root1
 
-    def contract(*keys):
-        knodes = map(get, keys)
-        new = knodes[0]
-        new.keys = frozenset().union(*(x.keys for x in knodes))
+##############################################################
+def visitStatementTree(scope, callback, catchcb=None):
+    for item in scope.statements:
+        for sub in item.getScopes():
+            visitStatementTree(sub, callback=callback)
+        if item.expr is not None:
+            callback(item, item.expr)
+        if catchcb is not None and isinstance(item, ast.TryStatement):
+            for pair in item.pairs:
+                catchcb(pair[0])
 
-        assert(not (True in new.keys and False in new.keys))
+int_tags = frozenset(map(objtypes.baset, [IntTT, ShortTT, CharTT, ByteTT, BoolTT]))
+array_tags = frozenset(map(objtypes.baset, [ByteTT, BoolTT]) + [objtypes.BExpr])
 
-        for key in new.keys:
-            nodes[key] = new
-
-    def addedge(key1, key2):
-        edges.append((key1, key2))
-
-    def visitExpr(expr):
-        if hasattr(expr, 'params'):
-            for param in expr.params:
-                visitExpr(param)
-            visit_cb(expr, arg_vars, addedge, contract)
-
-    def visitScope(scope):
-        for item in scope.statements:
-            for sub in item.getScopes():
-                visitScope(sub)
-            if getattr(item, 'expr', None) is not None:
-                visitExpr(item.expr)
-
-    visitScope(root)
-    assert(get(False) != get(True))
-    for key1, key2 in edges:
-        node1, node2 = get(key1), get(key2)
-        if node1 != node2:
-            node1.weights[node2] += 1
-            node2.weights[node1] += 1
-
-    temp = set()
-    nodelist = [n for n in nodes.values() if not n in temp and not temp.add(n)]
-    for node in nodelist:
-        items = node.weights.items()
-        node.weights = collections.OrderedDict(sorted(items, key=lambda (n,w):nodelist.index(n)))
-
-    # print '\n'.join(map('{0[0]} <-> {0[1]}'.format, edges))
-    # import pdb;pdb.set_trace()
-
-    #Greedy algorithm - todo: Edumund Karps
-    set1 = set()
-    stack = [get(False)]
-    while stack:
-        cur = stack.pop()
-        if cur not in set1 and True not in cur.keys:
-            set1.add(cur)
-            stack.extend(cur.weights)
-
-    set2 = temp - set1
-    keys1 = frozenset().union(*(n.keys for n in set1))
-    keys2 = frozenset().union(*(n.keys for n in set2))
-    keys1 -= set([False])
-    keys2 -= set([True])
-    assert(False not in keys2)
-    return keys1, keys2
-
-_prefixes = '.bexpr', BoolTT[0], ByteTT[0]
-def visitExpr_array(expr, arg_vars, addedge, contract):
-    getbase = lambda expr:expr.dtype[0] if expr.dtype else None
-
-    pkeys = [(expr, i) for i,param in enumerate(expr.params) if getbase(param) in _prefixes]
-    for key in pkeys:
-        param = expr.params[key[1]]
-        if not isinstance(param, ast.Literal):
-            addedge(key, param)
-        if getbase(param) != '.bexpr':
-            contract((getbase(param) == BoolTT[0]), param)
-
-    if isinstance(expr, ast.Assignment):
-        if len(pkeys) == 2:
-            addedge(*pkeys)
-            contract(expr, pkeys[0])
-    elif isinstance(expr, ast.ArrayAccess):
-        if pkeys:
-            contract(expr, pkeys[-1])   
-    elif isinstance(expr, (ast.MethodInvocation, ast.ClassInstanceCreation)):
-        for i,tt in enumerate(expr.tts):
-            if tt and tt[0] in _prefixes:
-                contract((tt[0]==BoolTT[0]), (expr,i))
-    elif isinstance(expr, ast.Ternary):
-        if getbase(expr) in _prefixes:
-            contract(expr, *pkeys[1:])    
-
-def processResults_array(bytekeys, boolkeys):
-    for key in bytekeys | boolkeys:
-        if not isinstance(key, tuple):
-            expr = key
-            base, dim = expr.dtype
-            if base == '.bexpr':
-                new = BoolTT[0] if key in boolkeys else ByteTT[0]
-                expr.dtype = new, dim
-
-all_tts = IntTT, ShortTT, CharTT, ByteTT, BoolTT
-def visitExpr_bool(expr, arg_vars, addedge, contract):
-    contractIf = lambda (expr):contract((expr.dtype==BoolTT), expr) if expr.dtype in all_tts else None
-
-    if expr in arg_vars:
-        contractIf(expr)
-
-    pkeys = [(expr, i) for i,param in enumerate(expr.params) if param.dtype in all_tts]
-    for key in pkeys:
-        param = expr.params[key[1]]
-        if not isinstance(param, ast.Literal):
-            addedge(key, param)
-        else:
-            if param.val not in (0,1):
-                contract(False, param)
-
-    if isinstance(expr, ast.Assignment):
-        if len(pkeys) == 2:
-            addedge(*pkeys)
-            contract(expr, pkeys[0])
-    elif isinstance(expr, ast.ArrayAccess):
-        contractIf(expr)
-        contract(False, pkeys[0])     
-    elif isinstance(expr, ast.BinaryInfix):
-        if expr.opstr in ('==', '!=', '<', '>', '<=', '>=', 'instanceof'):
-            contract(True, expr)
-            if pkeys:
-                if expr.opstr in ('==', '!='):
-                    contract(*pkeys)
-                elif expr.opstr in ('<', '>', '<=', '>='):
-                    contract(False, *pkeys)
-        elif expr.opstr in ('+', '/', '*', '-', '%', '<<', '>>', '>>>'):
-            contract(False, expr, *pkeys)
-        elif expr.opstr in ('&', '|', '^'):
-            contract(expr, *pkeys)
-        else:
-            assert(0)
-    elif isinstance(expr, (ast.MethodInvocation, ast.ClassInstanceCreation)):
-        for i,tt in enumerate(expr.tts):
-            if tt in all_tts:
-                contract((tt==BoolTT), (expr,i))
-        contractIf(expr)
-    elif isinstance(expr, ast.Ternary):
-        if expr.dtype in all_tts:
-            contract(expr, *pkeys[1:])
-        contract(True, pkeys[0])        
-    else:
-        contractIf(expr) 
-
-def processResults_bool(intkeys, boolkeys):
-    for key in boolkeys:
-        if not isinstance(key, tuple):
-            expr = key
-            expr.dtype = BoolTT
-    for key in boolkeys:
-        if isinstance(key, tuple):
-            expr, i = key
-            new = ast.makeCastExpr(BoolTT, expr.params[i])
-            assert(new.dtype == BoolTT)
-            expr.params = type(expr.params)((new if j == i else x) for j,x in enumerate(expr.params))
-
+# Fix int/bool and byte[]/bool[] vars
 def boolizeVars(root, arg_vars):
-    processResults_array(*graphCutVars(root, arg_vars, visitExpr_array))
-    processResults_bool(*graphCutVars(root, arg_vars, visitExpr_bool))
+    varlist = []
+    sets = UnionFind()
+
+    def visitExpr(expr, forceExact=False):
+        #see if we have to merge
+        if isinstance(expr, ast.Assignment) or isinstance(expr, ast.BinaryInfix) and expr.opstr in ('==','!=','&','|','^'):
+            subs = [visitExpr(param) for param in expr.params]
+            sets.union(*subs) # these operators can work on either type but need the same type on each side
+        elif isinstance(expr, ast.ArrayAccess):
+            sets.union(False, visitExpr(expr.params[1])) # array index is int only
+        elif isinstance(expr, ast.BinaryInfix) and expr.opstr in ('* / % + - << >> >>>'):
+            sets.union(False, visitExpr(expr.params[0])) # these operators are int only
+            sets.union(False, visitExpr(expr.params[1]))
+
+        if isinstance(expr, ast.Local):
+            tag, dim = objtypes.baset(expr.dtype), objtypes.dim(expr.dtype)
+            if (dim == 0 and tag in int_tags) or (dim > 0 and tag in array_tags):
+                # the only "unknown" vars are bexpr[] and ints. All else have fixed types
+                if forceExact or (tag != BExpr and tag != objtypes.baset(IntTT)):
+                    sets.union(tag == objtypes.baset(BoolTT), expr)
+                varlist.append(expr)
+                return sets.find(expr)
+        elif isinstance(expr, ast.Literal):
+            if expr.dtype == IntTT and expr.val not in (0,1):
+                return False
+            return None #if val is 0 or 1, or the literal is a null, it is freely convertable
+        elif isinstance(expr, ast.Assignment) or (isinstance(expr, ast.BinaryInfix) and expr.opstr in ('&','|','^')):
+            return subs[0]
+        elif isinstance(expr, (ast.ArrayAccess, ast.Parenthesis, ast.UnaryPrefix)):
+            return visitExpr(expr.params[0])
+        elif expr.dtype is not None and objtypes.baset(expr.dtype) != BExpr:
+            return expr.dtype[0] == objtypes.baset(BoolTT)
+        return None
+
+    def visitStatement(item, expr):
+        root = visitExpr(expr)
+        if isinstance(item, ast.ReturnStatement):
+            forced_val = (objtypes.baset(item.tt) == objtypes.baset(BoolTT))
+            sets.union(forced_val, root)
+
+    for expr in arg_vars:
+        visitExpr(expr, forceExact=True)
+    visitStatementTree(root, callback=visitStatement)
+
+    #Fix the propagated types
+    for var in set(varlist):
+        tag, dim = objtypes.baset(var.dtype), objtypes.dim(var.dtype)
+        assert(tag in int_tags or (dim>0 and tag == BExpr))
+        #make everything bool which is not forced to int
+        if sets.find(var) != False:
+            var.dtype = objtypes.withDimInc(BoolTT, dim)
+        elif dim > 0:
+            var.dtype = objtypes.withDimInc(ByteTT, dim)
+
+    #Fix everything else back up
+    def fixExpr(item, expr):
+        for param in expr.params:
+            fixExpr(None, param)
+
+        if isinstance(expr, ast.Assignment):
+            left, right = expr.params
+            if objtypes.baset(left.dtype) in int_tags and objtypes.dim(left.dtype) == 0:
+                if not ast.isPrimativeAssignable(right.dtype, left.dtype):
+                    expr.params = left, ast.makeCastExpr(left.dtype, right)
+        elif isinstance(expr, ast.BinaryInfix):
+            a, b = expr.params
+            #shouldn't need to do anything here for arrays
+            if expr.opstr in '== != & | ^' and a.dtype == BoolTT or b.dtype == BoolTT:
+                expr.params = [ast.makeCastExpr(BoolTT, v) for v in expr.params]
+    visitStatementTree(root, callback=fixExpr)
+
+# Fix vars of interface/object type
+# TODO: do this properly
+def interfaceVars(env, root, arg_vars):
+    varlist = []
+    consts = {}
+    assigns = collections.defaultdict(list)
+
+    def isInterfaceVar(expr):
+        if not isinstance(expr, ast.Local) or not objtypes.isBaseTClass(expr.dtype):
+            return False
+        if objtypes.className(expr.dtype) == objtypes.className(objtypes.ObjectTT):
+            return True
+        return 'INTERFACE' in env.getFlags(objtypes.className(expr.dtype))
+
+    def updateConst(var, tt):
+        varlist.append(var)
+        if var not in consts:
+            consts[var] = tt
+        else:
+            consts[var] = objtypes.commonSupertype(env, [consts[var], tt])
+
+    def visitStatement(item, expr):
+        if isinstance(expr, ast.Assignment) and objtypes.isBaseTClass(expr.dtype):
+            left, right = expr.params
+            if isInterfaceVar(left):
+                if isInterfaceVar(right):
+                    assigns[left].append(right)
+                    varlist.append(right)
+                    varlist.append(left)
+                else:
+                    updateConst(left, right.dtype)
+
+    def visitCatchDecl(decl):
+        updateConst(decl.local, decl.typename.dtype)
+
+    for expr in arg_vars:
+        if objtypes.isBaseTClass(expr.dtype):
+            updateConst(expr, expr.dtype)
+    visitStatementTree(root, callback=visitStatement, catchcb=visitCatchDecl)
+
+    # Now calculate actual types and fix
+    newtypes = {}
+
+    # visit variables in topological order. Doesn't handle case of loops, but this is a temporary hack anyway
+    order = graph_util.topologicalSort(varlist, lambda v:assigns[v])
+    for var in order:
+        assert(var not in newtypes)
+
+        tts = [newtypes.get(right, objtypes.ObjectTT) for right in assigns[var]]
+        if var in consts:
+            tts.append(consts[var])
+        newtypes[var] = newtype = objtypes.commonSupertype(env, tts)
+        if newtype != objtypes.ObjectTT and newtype != var.dtype:
+            assert(objtypes.baset(var.dtype) == objtypes.baset(objtypes.ObjectTT))
+            var.dtype = newtype

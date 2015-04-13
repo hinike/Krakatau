@@ -1,16 +1,16 @@
 from .base import BaseOp
 from ..ssa_types import SSA_OBJECT
 
-from .. import excepttypes
-from ..constraints import ObjectConstraint, DUMMY
+from .. import excepttypes, objtypes
+from ..constraints import ObjectConstraint, IntConstraint, DUMMY
 
 class New(BaseOp):
-    def __init__(self, parent, name, monad, verifier_type):
-        super(New, self).__init__(parent, [monad], makeException=True)
-        self.tt = name,0
-        self.rval = parent.makeVariable(SSA_OBJECT, origin=self)
-        self.uninit_verifier_type = verifier_type
+    def __init__(self, parent, name, monad, inode_key):
+        super(New, self).__init__(parent, [monad], makeException=True, makeMonad=True)
         self.env = parent.env
+        self.tt = objtypes.TypeTT(name, 0)
+        self.rval = parent.makeVariable(SSA_OBJECT, origin=self)
+        self.rval.uninit_orig_num = inode_key
 
     def propagateConstraints(self, m):
         eout = ObjectConstraint.fromTops(self.env, [], (excepttypes.OOM,), nonnull=True)
@@ -19,12 +19,10 @@ class New(BaseOp):
 
 class NewArray(BaseOp):
     def __init__(self, parent, param, baset, monad):
-        super(NewArray, self).__init__(parent, [monad, param], makeException=True)
+        super(NewArray, self).__init__(parent, [monad, param], makeException=True, makeMonad=True)
         self.baset = baset
         self.rval = parent.makeVariable(SSA_OBJECT, origin=self)
-
-        base, dim = baset
-        self.tt = base, dim+1
+        self.tt = objtypes.withDimInc(baset, 1)
         self.env = parent.env
 
     def propagateConstraints(self, m, i):
@@ -42,7 +40,7 @@ class NewArray(BaseOp):
 
 class MultiNewArray(BaseOp):
     def __init__(self, parent, params, type_, monad):
-        super(MultiNewArray, self).__init__(parent, [monad] + params, makeException=True)
+        super(MultiNewArray, self).__init__(parent, [monad] + params, makeException=True, makeMonad=True)
         self.tt = type_
         self.rval = parent.makeVariable(SSA_OBJECT, origin=self)
         self.env = parent.env

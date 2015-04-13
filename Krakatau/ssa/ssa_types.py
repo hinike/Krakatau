@@ -17,57 +17,52 @@ SSA_OBJECT = 'obj',
 SSA_MONAD = 'monad',
 
 def verifierToSSAType(vtype):
-    vtype_dict = {vtypes.T_INT:SSA_INT, 
-                vtypes.T_LONG[0]:SSA_LONG, 
-                vtypes.T_FLOAT:SSA_FLOAT, 
-                vtypes.T_DOUBLE[0]:SSA_DOUBLE}
-    if vtype.isObject:
+    vtype_dict = {vtypes.T_INT:SSA_INT,
+                vtypes.T_LONG:SSA_LONG,
+                vtypes.T_FLOAT:SSA_FLOAT,
+                vtypes.T_DOUBLE:SSA_DOUBLE}
+    #These should never be passed in here
+    assert(vtype.tag not in ('.new','.init'))
+    if vtypes.objOrArray(vtype):
         return SSA_OBJECT
     elif vtype in vtype_dict:
         return vtype_dict[vtype]
     return None
 
-class Variable(object):
-    def __init__(self, type_, origin=None, name=""):
-        self.type = type_
-        self.origin = origin
-        self.name = name
-        self.const = None 
-        self.decltype = None #for objects, the inferred type from the verifier if any
-        self.verifier_type = None
-
-    #for debugging
-    def __str__(self):
-        return self.name if self.name else super(Variable, self).__str__()
-
-    def __repr__(self):
-        name =  self.name if self.name else "@" + hex(id(self))
-        return "Var {}".format(name)
-
 class BasicBlock(object):
-    def __init__(self, key, lines, jump):
+    __slots__ = "key phis lines jump unaryConstraints predecessors inslots".split()
+
+    def __init__(self, key):
         self.key = key
-        # The list of phi statements merging incoming variables
-        self.phis = None #to be filled in later
-        # List of operations in the block
-        self.lines = lines
-        # The exit point (if, goto, etc)
-        self.jump = jump
+        self.phis = None # The list of phi statements merging incoming variables
+        self.lines = [] # List of operations in the block
+        self.jump = None # The exit point (if, goto, etc)
+
         # Holds constraints (range and type information) for each variable in the block.
         # If the value is None, this variable cannot be reached
-        self.unaryConstraints = collections.OrderedDict()
+        self.unaryConstraints = None
+        # List of predecessor pairs in deterministic order
+        self.predecessors = []
+
         #temp vars used during graph creation
-        self.sourceStates = collections.OrderedDict()
+        self.inslots = None
 
-    def getOps(self):
-        return self.phis + self.lines
-
-    def getSuccessors(self): 
+    def getSuccessors(self):
         return self.jump.getSuccessors()
 
     def filterVarConstraints(self, keepvars):
-        pairs = [t for t in self.unaryConstraints.items() if t[0] in keepvars]
-        self.unaryConstraints = collections.OrderedDict(pairs)
+        self.unaryConstraints = {k:v for k,v in self.unaryConstraints.items() if k in keepvars}
+
+    def removePredPair(self, pair):
+        self.predecessors.remove(pair)
+        for phi in self.phis:
+            del phi.dict[pair]
+
+    def replacePredPair(self, oldp, newp):
+        self.predecessors[self.predecessors.index(oldp)] = newp
+        for phi in self.phis:
+            phi.dict[newp] = phi.dict[oldp]
+            del phi.dict[oldp]
 
     def __str__(self):
         return 'Block ' + str(self.key)

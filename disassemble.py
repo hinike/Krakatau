@@ -12,44 +12,51 @@ def readFile(filename):
     with open(filename, 'rb') as f:
         return f.read()
 
-def disassembleClass(readTarget, targets=None, outpath=None):
-    if outpath is None:
-        outpath = os.getcwd()
-
+def disassembleClass(readTarget, targets=None, outpath=None, printCPool=False):
+    out = script_util.makeWriter(outpath, '.j')
     # targets = targets[::-1]
     start_time = time.time()
-    # random.shuffle(targets)
-    for i,target in enumerate(targets):
-        print 'processing target {}, {} remaining'.format(target, len(targets)-i)
+    # __import__('random').shuffle(targets)
 
-        data = readTarget(target)
-        stream = Krakatau.binUnpacker.binUnpacker(data=data)
-        class_ = ClassFile(stream)
+    with out:
+        for i,target in enumerate(targets):
+            print 'processing target {}, {}/{} remaining'.format(target, len(targets)-i, len(targets))
 
-        source = Krakatau.assembler.disassembler.disassemble(class_)
-        filename = script_util.writeFile(outpath, class_.name, '.j', source)
-        print 'Class written to', filename
-        print time.time() - start_time, ' seconds elapsed'
+            data = readTarget(target)
+            stream = Krakatau.binUnpacker.binUnpacker(data=data)
+            class_ = ClassFile(stream)
+            class_.loadElements(keepRaw=True)
+
+            source = Krakatau.assembler.disassembler.disassemble(class_, printCPool=printCPool)
+            filename = out.write(class_.name, source)
+            print 'Class written to', filename
+            print time.time() - start_time, ' seconds elapsed'
 
 if __name__== "__main__":
-    print 'Krakatau  Copyright (C) 2012-13  Robert Grosse'
+    print script_util.copyright
 
     import argparse
     parser = argparse.ArgumentParser(description='Krakatau decompiler and bytecode analysis tool')
-    parser.add_argument('-out',help='Path to generate files in')
+    parser.add_argument('-out', help='Path to generate files in')
     parser.add_argument('-r', action='store_true', help="Process all files in the directory target and subdirectories")
-    parser.add_argument('target',help='Name of class or jar file to decompile')
+    parser.add_argument('-path', help='Jar to look for class in')
+    parser.add_argument('-cpool', action='store_true', help='Print constant pool')
+    parser.add_argument('target', help='Name of class or jar file to decompile')
     args = parser.parse_args()
 
     targets = script_util.findFiles(args.target, args.r, '.class')
 
+    jar = args.path
+    if jar is None and args.target.endswith('.jar'):
+        jar = args.target
+
     #allow reading files from a jar if target is specified as a jar
-    if args.target.endswith('.jar'):
+    if jar:
         def readArchive(name):
-            with zipfile.ZipFile(args.target, 'r') as archive:
+            with zipfile.ZipFile(jar, 'r') as archive:
                 return archive.open(name).read()
         readTarget = readArchive
     else:
         readTarget = readFile
 
-    disassembleClass(readTarget, targets, args.out)
+    disassembleClass(readTarget, targets, args.out, args.cpool)

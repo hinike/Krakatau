@@ -1,27 +1,26 @@
-import collections
-ODict = collections.OrderedDict
+import copy
 
-def slotsToDict(inslots):
-    inputs = ODict({'m':inslots.monad})
-    for i,v in enumerate(inslots.locals):
-        if v is not None:
-            inputs['r'+str(i)] = v        
-    for i,v in enumerate(inslots.stack):
-        if v is not None:
-            inputs['s'+str(i)] = v
-    return inputs
+def flattenslots(slots):
+    return [slots.monad] + slots.stack + slots.locals
 
 class ProcInfo(object):
-    def __init__(self, retblock):
-        self.callops = ODict()
+    def __init__(self, retblock, target):
         self.retblock = retblock
-        self.retop = retblock.jump
-        self.target = retblock.jump.iNode.jsrTarget #just key for now, to be replaced later
+        self.target = target
+        self.jsrblocks = []
+        assert(target is retblock.jump.target)
+
+    def __str__(self): return 'Proc{}<{}>'.format(self.target.key, ', '.join(str(b.key) for b in self.jsrblocks))
+    __repr__ = __str__
 
 ###########################################################################################
 class ProcJumpBase(object):
-    @property 
-    def params(self): return self.input.values()
+    @property
+    def params(self):
+        return [v for v in self.input if v is not None]
+
+    def replaceBlocks(self, blockDict):
+        self.target = blockDict.get(self.target, self.target)
 
     def getExceptSuccessors(self): return ()
     def getSuccessors(self): return self.getNormalSuccessors()
@@ -29,41 +28,28 @@ class ProcJumpBase(object):
     def reduceSuccessors(self, pairsToRemove): return self
 
 class ProcCallOp(ProcJumpBase):
-    def __init__(self, inslots, iNode):
-        self.input = slotsToDict(inslots)
-        self.iNode = iNode
+    def __init__(self, target, fallthrough, inslots, outslots):
+        self.fallthrough = fallthrough
+        self.target = target
+        self.input = flattenslots(inslots)
+        self.output = flattenslots(outslots)
+        self.out_localoff = 1 + len(outslots.stack) #store so we can unflatten outslots if necessary
+        self.debug_skipvars = None #keep track for debugging
 
-        self.fallthrough = iNode.returnPoint
-        self.target = iNode.successors[0]
-        #self.out
-
-    def registerOuts(self, outslots):
-        self.out = slotsToDict(outslots)
-        for var in self.out.values():
-            assert(var.origin is None)
-            var.origin = self
-
-    def replaceBlocks(self, blockDict):
-        self.fallthrough = blockDict.get(self.fallthrough, self.fallthrough)
-        self.target = blockDict.get(self.target, self.target)
-
-    def replaceVars(self, varDict):
-        self.input = ODict((k,varDict.get(v,v)) for k,v in self.input.items())
-        self.out = ODict((k,varDict.get(v,v)) for k,v in self.out.items())
+        for var in self.output:
+            if var is not None:
+                assert(var.origin is None)
+                var.origin = self
 
     def getNormalSuccessors(self): return self.fallthrough, self.target
-    
+
 class DummyRet(ProcJumpBase):
-    def __init__(self, inslots, iNode):
-        self.input = slotsToDict(inslots)
-        self.iNode = iNode
-
-        self.target = iNode.jsrTarget
-
-    def replaceBlocks(self, blockDict):
-        self.target = blockDict.get(self.target, self.target)
+    def __init__(self, inslots, target):
+        self.target = target
+        self.input = flattenslots(inslots)
 
     def replaceVars(self, varDict):
-        self.input = ODict((k,varDict.get(v,v)) for k,v in self.input.items())
+        self.input = [varDict.get(v,v) for v in self.input]
 
     def getNormalSuccessors(self): return ()
+    def clone(self): return copy.copy(self) #target and input will be replaced later by calls to replaceBlocks/Vars

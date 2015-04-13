@@ -4,7 +4,7 @@ from ..constraints import ObjectConstraint, DUMMY
 
 class Monitor(BaseOp):
     def __init__(self, parent, args, monad, isExit):
-        BaseOp.__init__(self, parent, [monad]+args, makeException=True)
+        BaseOp.__init__(self, parent, [monad]+args, makeException=True, makeMonad=True)
         self.exit = isExit
         self.env = parent.env
 
@@ -16,4 +16,4 @@ class Monitor(BaseOp):
             etypes += (excepttypes.MonState,)
         eout = ObjectConstraint.fromTops(self.env, [], etypes, nonnull=True)
         mout = m if x.isConstNull() else DUMMY
-        return eout, mout
+        return None, eout, mout

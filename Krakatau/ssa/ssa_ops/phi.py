@@ -1,34 +1,35 @@
-import collections
-from .base import BaseOp
-
-class Phi(BaseOp):
-    def __init__(self, parent, odict, rval):
-        odict = collections.OrderedDict(odict)
-
-        super(Phi, self).__init__(parent, odict.values())
-        self.odict = odict
+class Phi(object):
+    __slots__ = 'block dict rval'.split()
+    def __init__(self, block, rval):
+        self.block = block #used in constraint propagation
+        self.dict = {}
         self.rval = rval
-        assert(rval is not None)
-        #self.block must be set later for obvious reasons
-        #block is used in constraint propagation
+        assert(rval is not None and rval.origin is None)
+        rval.origin = self
 
-    def updateDict(self, newpairs):
-        self.odict = collections.OrderedDict(newpairs)
-        self.updateParams(self.odict.values())
+    def add(self, key, val):
+        assert(key not in self.dict)
+        assert(val.type == self.rval.type)
+        assert(val is not None)
+        self.dict[key] = val
 
+    @property
+    def params(self): return [self.dict[k] for k in self.block.predecessors]
+
+    def get(self, key): return self.dict[key]
+    def delete(self, key): del self.dict[key]
+
+    #Copy these over from BaseOp so we don't need to inherit
     def replaceVars(self, rdict):
-        pairs = [(k, rdict.get(x,x)) for k,x in self.odict.items()]
-        self.updateDict(pairs)
+        for k in self.dict:
+            self.dict[k] = rdict.get(self.dict[k], self.dict[k])
 
-    def replaceBlocks(self, rdict):
-        pairs = [((rdict.get(x,x), t), v) for (x,t),v in self.odict.items()]
-        self.updateDict(pairs)
+    def getOutputs(self):
+        return self.rval, None, None
 
-    def replaceKey(self, old, new):
-        pairs = [((new if x is old else x), v) for x,v in self.odict.items()]
-        self.updateDict(pairs)  
+    def removeOutput(self, var):
+        assert(var == self.rval)
+        self.rval = None
 
-    def removeKey(self, key):
-        assert(key in self.odict)
-        pairs = [(x, v) for x,v in self.odict.items() if x != key]
-        self.updateDict(pairs)
+    def replaceOutVars(self, vardict):
+        self.rval = vardict.get(self.rval)

@@ -4,12 +4,11 @@ import time, random
 
 import Krakatau
 import Krakatau.ssa
+from Krakatau.error import ClassLoaderError
 from Krakatau.environment import Environment
-from Krakatau.java import javaclass
+from Krakatau.java import javaclass, visitor
 from Krakatau.verifier.inference_verifier import verifyBytecode
-
 from Krakatau import script_util
-
 
 def findJRE():
     try:
@@ -25,24 +24,62 @@ def findJRE():
     except Exception as e:
         pass
 
+def _stats(s):
+    bc = len(s.blocks)
+    vc = sum(len(b.unaryConstraints) for b in s.blocks)
+    return '{} blocks, {} variables'.format(bc,vc)
+
+def _print(s):
+    from Krakatau.ssa.printer import SSAPrinter
+    return SSAPrinter(s).print_()
+
 def makeGraph(m):
     v = verifyBytecode(m.code)
     s = Krakatau.ssa.ssaFromVerified(m.code, v)
+
     if s.procs:
-        s.mergeSingleSuccessorBlocks()
-        s.removeUnusedVariables()
+        # s.mergeSingleSuccessorBlocks()
+        # s.removeUnusedVariables()
         s.inlineSubprocs()
+
+    # print _stats(s)
     s.condenseBlocks()
     s.mergeSingleSuccessorBlocks()
     s.removeUnusedVariables()
-    s.pessimisticPropagation() #WARNING - currently does not work if any output variables have been pruned already
+    # print _stats(s)
+    s.constraintPropagation()
     s.disconnectConstantVariables()
     s.simplifyJumps()
+    s.simplifyThrows()
     s.mergeSingleSuccessorBlocks()
-    s.removeUnusedVariables() #todo - make this a loop
+    s.removeUnusedVariables()
+    # print _stats(s)
     return s
 
+<<<<<<< HEAD
 def createEnvironment(path):
+||||||| merged common ancestors
+def decompileClass(path=[], targets=None, outpath=None):
+    if outpath is None:
+        outpath = os.getcwd()
+
+=======
+def deleteUnusued(cls):
+    #Delete attributes we aren't going to use
+    #pretty hackish, but it does help when decompiling large jars
+    for e in cls.fields + cls.methods:
+        del e.class_, e.attributes, e.static
+    for m in cls.methods:
+        del m.native, m.abstract, m.isConstructor
+        del m.code
+    del cls.version, cls.this, cls.super, cls.env
+    del cls.interfaces_raw, cls.cpool
+    del cls.attributes
+
+def decompileClass(path=[], targets=None, outpath=None, skip_errors=False, add_throws=False):
+    out = script_util.makeWriter(outpath, '.java')
+
+>>>>>>> master
     e = Environment()
     for part in path:
         e.addToPath(part)
@@ -55,6 +92,7 @@ def decompileClass(path=[], targets=None, outpath=None, args={}):
     e = createEnvironment(path)
 
     start_time = time.time()
+<<<<<<< HEAD
     
     if args.shuffle:
         random.shuffle(targets)
@@ -109,9 +147,55 @@ def decompileClass(path=[], targets=None, outpath=None, args={}):
         print 'Failed to decompile the following classes:'
         for target in failedTargets:
             print target
+||||||| merged common ancestors
+    # random.shuffle(targets)
+    for i,target in enumerate(targets):
+        print 'processing target {}, {} remaining'.format(target, len(targets)-i)
+        c = e.getClass(target)
+
+        deco = javaclass.ClassDecompiler(c, makeGraph)
+        source = deco.generateSource()
+        #The single class decompiler doesn't add package declaration currently so we add it here
+        if '/' in target:
+            package = 'package {};\n\n'.format(target.replace('/','.').rpartition('.')[0])
+            source = package + source
+
+        filename = script_util.writeFile(outpath, c.name, '.java', source)
+        print 'Class written to', filename
+        print time.time() - start_time, ' seconds elapsed'
+=======
+    # random.shuffle(targets)
+    with e, out:
+        printer = visitor.DefaultVisitor()
+        for i,target in enumerate(targets):
+            print 'processing target {}, {} remaining'.format(target, len(targets)-i)
+
+            try:
+                c = e.getClass(target)
+                source = printer.visit(javaclass.generateAST(c, makeGraph, skip_errors, add_throws=add_throws))
+            except Exception as err:
+                if not skip_errors:
+                    raise
+                if isinstance(err, ClassLoaderError):
+                    print 'Failed to decompile {} due to missing or invalid class {}'.format(target.encode('utf8'), err.data.encode('utf8'))
+                else:
+                    import traceback
+                    print traceback.format_exc()
+                continue
+
+            #The single class decompiler doesn't add package declaration currently so we add it here
+            if '/' in target:
+                package = 'package {};\n\n'.format(target.replace('/','.').rpartition('.')[0])
+                source = package + source
+
+            filename = out.write(c.name, source)
+            print 'Class written to', filename
+            print time.time() - start_time, ' seconds elapsed'
+            deleteUnusued(c)
+>>>>>>> master
 
 if __name__== "__main__":
-    print 'Krakatau  Copyright (C) 2012-13  Robert Grosse'
+    print script_util.copyright
 
     import argparse
     parser = argparse.ArgumentParser(description='Krakatau decompiler and bytecode analysis tool')
@@ -120,13 +204,17 @@ if __name__== "__main__":
     parser.add_argument('-pattern',  help='Patterns for selecting packages to decompile')
     parser.add_argument('-nauto', action='store_true', help="Don't attempt to automatically locate the Java standard library. If enabled, you must specify the path explicitly.")
     parser.add_argument('-r', action='store_true', help="Process all files in the directory target and subdirectories")
+<<<<<<< HEAD
     parser.add_argument('-keepgoing', action='store_true', help="Keep going after the first error")
     parser.add_argument('-shuffle', action='store_true', help="Shuffle the order in which classes are decompiled")
+||||||| merged common ancestors
+=======
+    parser.add_argument('-skip', action='store_true', help="Upon errors, skip class or method and continue decompiling")
+>>>>>>> master
     parser.add_argument('target',help='Name of class or jar file to decompile')
     args = parser.parse_args()
 
     path = []
-
     if not args.nauto:
         print 'Attempting to automatically locate the standard library...'
         found = findJRE()
@@ -142,8 +230,15 @@ if __name__== "__main__":
 
     if args.target.endswith('.jar'):
         path.append(args.target)
-        
+
     targets = script_util.findFiles(args.target, args.r, '.class')
     targets = map(script_util.normalizeClassname, targets)
+<<<<<<< HEAD
 
     decompileClass(path, targets, args.out, args)
+||||||| merged common ancestors
+
+    decompileClass(path, targets, args.out)
+=======
+    decompileClass(path, targets, args.out, args.skip)
+>>>>>>> master

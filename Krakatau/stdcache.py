@@ -1,3 +1,4 @@
+// This file was removed upstream.   TODO: Consider removing.
 from Krakatau.error import ClassLoaderError
 
 class Cache(object):

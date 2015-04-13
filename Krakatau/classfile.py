@@ -56,9 +56,14 @@ class ClassFile(object):
                 'SUPER':0x0020,
                 'INTERFACE':0x0200,
                 'ABSTRACT':0x0400,
-                'SYNTHETIC':0x1000, 
-                'ANNOTATION':0x2000, 
-                'ENUM':0x4000, 
+                'SYNTHETIC':0x1000,
+                'ANNOTATION':0x2000,
+                'ENUM':0x4000,
+
+                # These flags are only used for InnerClasses attributes
+                'PRIVATE':0x0002,
+                'PROTECTED':0x0004,
+                'STATIC':0x0008,
                 }
 
     def __init__(self, bytestream):
@@ -66,7 +71,7 @@ class ClassFile(object):
         assert(magic == 0xCAFEBABE)
         self.version = major,minor
 
-        self.const_pool_raw = get_cp_raw(bytestream)
+        const_pool_raw = get_cp_raw(bytestream)
         flags, self.this, self.super = bytestream.get('>HHH')
 
         interface_count = bytestream.get('>H')
@@ -75,35 +80,54 @@ class ClassFile(object):
         self.fields_raw = get_fields_raw(bytestream)
         self.methods_raw = get_methods_raw(bytestream)
 
-        ic_indices = [i for i,x in enumerate(self.const_pool_raw) if x == (1, ("InnerClasses",))]
+        ic_indices = [i for i,x in enumerate(const_pool_raw) if x == (1, ("InnerClasses",))]
         self.attributes_raw = get_attributes_raw(bytestream, ic_indices)
         assert(bytestream.size() == 0)
 
-        self.flags = set(name for name,mask in ClassFile.flagVals.items() if (mask & flags))
-
-        #convert raw data
-        self.cpool = cpool = constant_pool.ConstPool(self.const_pool_raw)
+        self.flags = frozenset(name for name,mask in ClassFile.flagVals.items() if (mask & flags))
+        self.cpool = constant_pool.ConstPool(const_pool_raw)
         self.name = self.cpool.getArgsCheck('Class', self.this)
-        
-        self.fields = [field.Field(m, self) for m in self.fields_raw]    
-        self.methods = [method.Method(m, self) for m in self.methods_raw]
-        self.attributes = fixAttributeNames(self.attributes_raw, cpool)
+        self.elementsLoaded = False
 
-    def load(self, env, name, subclasses):
+        self.env = self.supername = self.hierarchy = None
+        self.fields = self.methods = self.attributes = None
+        self.all_interfaces = None
+
+    def loadSupers(self, env, name, subclasses):
         self.env = env
         assert(self.name == name)
 
         if self.super:
             self.supername = self.cpool.getArgsCheck('Class', self.super)
-            # if superclass is cached, we can assume it is free from circular inheritance
-            # since it must have been loaded successfully on a previous run 
-            if not self.env.isCached(self.supername):
-                self.env.getClass(self.supername, subclasses + (name,))
-            self.hierachy = self.env.getSupers(self.supername) + (self.name,)         
+            superclass = self.env.getClass(self.supername, subclasses + (name,), partial=True)
+            self.hierarchy = superclass.hierarchy + (self.name,)
+
+            # Now get all interfaces for this class (recursively)
+            interfaces = self.env.getInterfaces(self.supername)
+            if 'INTERFACE' in self.flags:
+                interfaces |= {self.name}
+            for index in self.interfaces_raw:
+                iname = self.cpool.getArgsCheck('Class', index)
+                if iname not in interfaces:
+                    interfaces |= self.env.getInterfaces(iname)
+            self.all_interfaces = interfaces
         else:
             assert(name == 'java/lang/Object')
             self.supername = None
-            self.hierachy = (self.name,)
+            self.hierarchy = (self.name,)
+            self.all_interfaces = frozenset()
 
-    def getSuperclassHierachy(self):
-        return self.hierachy
+    def loadElements(self, keepRaw=False):
+        if self.elementsLoaded:
+            return
+        self.fields = [field.Field(m, self, keepRaw) for m in self.fields_raw]
+        self.methods = [method.Method(m, self, keepRaw) for m in self.methods_raw]
+        self.attributes = fixAttributeNames(self.attributes_raw, self.cpool)
+
+        self.fields_raw = self.methods_raw = None
+        if not keepRaw:
+            self.attributes_raw = None
+        self.elementsLoaded = True
+
+    def getSuperclassHierarchy(self):
+        return self.hierarchy
