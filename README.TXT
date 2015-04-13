@@ -1,3 +1,7 @@
+This is an outdated fork, tweaked for use in the rev22/apk-decompile script.
+
+----
+
 Krakatau Bytecode Tools
 Copyright (C) 2012-13 Robert Grosse
 
