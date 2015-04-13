@@ -58,11 +58,6 @@ def decompileClass(path=[], targets=None, outpath=None, args={}):
     
     if args.shuffle:
         random.shuffle(targets)
-        random.shuffle(targets)
-        random.shuffle(targets)
-        random.shuffle(targets)
-        random.shuffle(targets)
-        random.shuffle(targets)
 
     failedTargets = [ ]
         
