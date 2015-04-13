@@ -660,17 +660,14 @@ class TypeName(JavaExpression):
     def __init__(self, tt):
         self.dtype = None
         self.tt = tt
-<<<<<<< HEAD
         name, dim = tt
         if len(name) < 1:
             '/* <unidentified type> */'
         elif name[0] == '.': #primative type:
             name = name[1:]
-||||||| merged common ancestors
         name, dim = tt
         if name[0] == '.': #primative type:
             name = name[1:]
-=======
 
     def print_(self, printer, print_):
         name = objtypes.className(self.tt)
@@ -679,7 +676,6 @@ class TypeName(JavaExpression):
             name = escapeString(name.replace('/','.'))
             if name.rpartition('.')[0] == 'java.lang':
                 name = name.rpartition('.')[2]
->>>>>>> master
         else:
             name = objtypes.primName(self.tt)
         s = name + '[]'*objtypes.dim(self.tt)

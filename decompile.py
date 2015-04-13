@@ -56,14 +56,6 @@ def makeGraph(m):
     # print _stats(s)
     return s
 
-<<<<<<< HEAD
-def createEnvironment(path):
-||||||| merged common ancestors
-def decompileClass(path=[], targets=None, outpath=None):
-    if outpath is None:
-        outpath = os.getcwd()
-
-=======
 def deleteUnusued(cls):
     #Delete attributes we aren't going to use
     #pretty hackish, but it does help when decompiling large jars
@@ -76,24 +68,18 @@ def deleteUnusued(cls):
     del cls.interfaces_raw, cls.cpool
     del cls.attributes
 
-def decompileClass(path=[], targets=None, outpath=None, skip_errors=False, add_throws=False):
-    out = script_util.makeWriter(outpath, '.java')
-
->>>>>>> master
+def createEnvironment(path):
     e = Environment()
     for part in path:
         e.addToPath(part)
     return e
     
-def decompileClass(path=[], targets=None, outpath=None, args={}):
-    if outpath is None:
-        outpath = os.getcwd()
+def decompileClass(args={}, path=[], targets=None, outpath=None, skip_errors=False, add_throws=False):
+    out = script_util.makeWriter(outpath, '.java')
 
     e = createEnvironment(path)
 
     start_time = time.time()
-<<<<<<< HEAD
-    
     if args.shuffle:
         random.shuffle(targets)
         random.shuffle(targets)
@@ -101,98 +87,54 @@ def decompileClass(path=[], targets=None, outpath=None, args={}):
         random.shuffle(targets)
         random.shuffle(targets)
         random.shuffle(targets)
-
+    
     failedTargets = [ ]
-        
-    for i,target in enumerate(targets):
-        try:
-            if args and args.pattern:
-                if target.find(args.pattern) < 0:
-                    continue
-            print
-            print
-            print 'processing target {}, {} remaining'.format(target, len(targets)-i)
-            c = e.getClass(target)
 
-            deco = javaclass.ClassDecompiler(c, makeGraph)
-            source = deco.generateSource()
-        #The single class decompiler doesn't add package declaration currently so we add it here
-            if '/' in target:
-                package = 'package {};\n\n'.format(target.replace('/','.').rpartition('.')[0])
-                source = package + source
+    with e, out:
+        printer = visitor.DefaultVisitor()
+        for i,target in enumerate(targets):
+            try:
+                if args and args.pattern:
+                    if target.find(args.pattern) < 0:
+                        continue
+                print
+                print
+                print 'processing target {}, {} remaining'.format(target, len(targets)-i)
+                try:
+                    c = e.getClass(target)
+                    source = printer.visit(javaclass.generateAST(c, makeGraph, skip_errors, add_throws=add_throws))
+                except Exception as err:
+                    if not skip_errors:
+                        raise
+                    if isinstance(err, ClassLoaderError):
+                        print 'Failed to decompile {} due to missing or invalid class {}'.format(target.encode('utf8'), err.data.encode('utf8'))
+                    else:
+                        import traceback
+                        print traceback.format_exc()
+                        continue
+                #The single class decompiler doesn't add package declaration currently so we add it here
+                if '/' in target:
+                    package = 'package {};\n\n'.format(target.replace('/','.').rpartition('.')[0])
+                    source = package + source
 
-            filename = script_util.writeFile(outpath, c.name, '.java', source)
-            print 'Class written to', filename
-            print time.time() - start_time, ' seconds elapsed'
-        # except AttributeError as e:
-        #     print e
-        #     print traceback.format_stack()
-        #     time.sleep(5)
-        #     print 'Got attribute error, but continuing!'
-        # except Exception as e:
-        #     print e
-        #     time.sleep(5)
-        #     print 'Failed, but continuing!'
-        except Exception as theException:
-            print theException
-            if args.keepgoing:
-                time.sleep(5)
-                print '{}: Failed, but continuing to decompile other classes!'.format(target)
-                failedTargets.append(target)
-                e = createEnvironment(path)
-            else:
-                raise
+                filename = out.write(c.name, source)
+                print 'Class written to', filename
+                print time.time() - start_time, ' seconds elapsed'
+                deleteUnusued(c)
+            except Exception as theException:
+                print theException
+                if args.keepgoing:
+                    time.sleep(5)
+                    print '{}: Failed, but continuing to decompile other classes!'.format(target)
+                    failedTargets.append(target)
+                    e = createEnvironment(path)
+                else:
+                    raise
 
     if (len(failedTargets) > 0):
         print 'Failed to decompile the following classes:'
         for target in failedTargets:
             print target
-||||||| merged common ancestors
-    # random.shuffle(targets)
-    for i,target in enumerate(targets):
-        print 'processing target {}, {} remaining'.format(target, len(targets)-i)
-        c = e.getClass(target)
-
-        deco = javaclass.ClassDecompiler(c, makeGraph)
-        source = deco.generateSource()
-        #The single class decompiler doesn't add package declaration currently so we add it here
-        if '/' in target:
-            package = 'package {};\n\n'.format(target.replace('/','.').rpartition('.')[0])
-            source = package + source
-
-        filename = script_util.writeFile(outpath, c.name, '.java', source)
-        print 'Class written to', filename
-        print time.time() - start_time, ' seconds elapsed'
-=======
-    # random.shuffle(targets)
-    with e, out:
-        printer = visitor.DefaultVisitor()
-        for i,target in enumerate(targets):
-            print 'processing target {}, {} remaining'.format(target, len(targets)-i)
-
-            try:
-                c = e.getClass(target)
-                source = printer.visit(javaclass.generateAST(c, makeGraph, skip_errors, add_throws=add_throws))
-            except Exception as err:
-                if not skip_errors:
-                    raise
-                if isinstance(err, ClassLoaderError):
-                    print 'Failed to decompile {} due to missing or invalid class {}'.format(target.encode('utf8'), err.data.encode('utf8'))
-                else:
-                    import traceback
-                    print traceback.format_exc()
-                continue
-
-            #The single class decompiler doesn't add package declaration currently so we add it here
-            if '/' in target:
-                package = 'package {};\n\n'.format(target.replace('/','.').rpartition('.')[0])
-                source = package + source
-
-            filename = out.write(c.name, source)
-            print 'Class written to', filename
-            print time.time() - start_time, ' seconds elapsed'
-            deleteUnusued(c)
->>>>>>> master
 
 if __name__== "__main__":
     print script_util.copyright
@@ -204,13 +146,9 @@ if __name__== "__main__":
     parser.add_argument('-pattern',  help='Patterns for selecting packages to decompile')
     parser.add_argument('-nauto', action='store_true', help="Don't attempt to automatically locate the Java standard library. If enabled, you must specify the path explicitly.")
     parser.add_argument('-r', action='store_true', help="Process all files in the directory target and subdirectories")
-<<<<<<< HEAD
     parser.add_argument('-keepgoing', action='store_true', help="Keep going after the first error")
     parser.add_argument('-shuffle', action='store_true', help="Shuffle the order in which classes are decompiled")
-||||||| merged common ancestors
-=======
     parser.add_argument('-skip', action='store_true', help="Upon errors, skip class or method and continue decompiling")
->>>>>>> master
     parser.add_argument('target',help='Name of class or jar file to decompile')
     args = parser.parse_args()
 
@@ -233,12 +171,4 @@ if __name__== "__main__":
 
     targets = script_util.findFiles(args.target, args.r, '.class')
     targets = map(script_util.normalizeClassname, targets)
-<<<<<<< HEAD
-
-    decompileClass(path, targets, args.out, args)
-||||||| merged common ancestors
-
-    decompileClass(path, targets, args.out)
-=======
-    decompileClass(path, targets, args.out, args.skip)
->>>>>>> master
+    decompileClass(path, targets, args.out, args.skip, args)
