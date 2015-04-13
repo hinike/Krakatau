@@ -82,12 +82,6 @@ def decompileClass(args={}, path=[], targets=None, outpath=None, skip_errors=Fal
     start_time = time.time()
     if args.shuffle:
         random.shuffle(targets)
-        random.shuffle(targets)
-        random.shuffle(targets)
-        random.shuffle(targets)
-        random.shuffle(targets)
-        random.shuffle(targets)
-    
     failedTargets = [ ]
 
     with e, out:
