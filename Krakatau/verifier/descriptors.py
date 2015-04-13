@@ -16,9 +16,10 @@ def parseFieldDescriptors(desc_str, unsynthesize=True):
             raise ValueError('Descriptor contains [s at end of string')
 
         if desc_str[0] == 'L':
-<<<<<<< HEAD
             try:
-                end = desc_str.index(';')
+                end = desc_str.find(';')
+                if end == -1:
+                    raise ValueError('Unmatched L in descriptor')
             except ValueError:
                 name = desc_str[1:]
                 desc_str = ''
@@ -26,20 +27,6 @@ def parseFieldDescriptors(desc_str, unsynthesize=True):
                 name = desc_str[1:end]
                 desc_str = desc_str[end+1:]
             baset = [T_OBJECT(name)]
-||||||| merged common ancestors
-            end = desc_str.index(';')
-            name = desc_str[1:end]
-            desc_str = desc_str[end+1:]
-            baset = [T_OBJECT(name)]
-=======
-            end = desc_str.find(';')
-            if end == -1:
-                raise ValueError('Unmatched L in descriptor')
-
-            name = desc_str[1:end]
-            desc_str = desc_str[end+1:]
-            baset = T_OBJECT(name)
->>>>>>> master
         else:
             if desc_str[0] not in baseTypes:
                 raise ValueError('Unrecognized code {} in descriptor'.format(desc_str[0]))

@@ -334,20 +334,9 @@ class InstructionNode(object):
         else:
             self.successors = next_,
 
-<<<<<<< HEAD
-    def _assertStackTop(self, needed):
-        return
-        if needed and not isAssignableSeq(self.env, self.stack[-len(needed):], needed):
-            self.error('Invalid arguments on stack\nExpected: {}\nFound: {}\n\n{self}', map(str, needed), map(str, self.stack[-len(needed):]))
-||||||| merged common ancestors
-    def _assertStackTop(self, needed):
-        if needed and not isAssignableSeq(self.env, self.stack[-len(needed):], needed):
-            self.error('Invalid arguments on stack\nExpected: {}\nFound: {}\n\n{self}', map(str, needed), map(str, self.stack[-len(needed):]))
-=======
     def _setProtected(self, isfield):
         self.protected = False
         target, name, desc = self.cpool.getArgsCheck(('Field' if isfield else 'Method'), self.instruction[1])
->>>>>>> master
 
         # Not sure what Hotspot actually does here, but this is hopefully close enough
         if '[' in target:
